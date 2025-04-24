@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Race to the Top - Horizontal</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f4f4f4;
+      padding: 20px;
+    }
+
+    .track {
+      display: flex;
+      justify-content: center;
+      margin: 10px 0;
+    }
+
+    .tile {
+      width: 60px;
+      height: 60px;
+      background-color: #ddd;
+      border: 1px solid #aaa;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    .tile.highlight {
+      outline: 3px dashed #555;
+      background-color: #ffeeba;
+      cursor: pointer;
+    }
+
+    .token {
+      position: absolute;
+      bottom: 2px;
+      font-size: 18px;
+      transition: transform 0.4s ease;
+    }
+
+    #controls {
+      margin-bottom: 20px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    #winner {
+      font-size: 1.5em;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    #dice {
+      font-size: 40px;
+      margin: 10px;
+      transition: transform 0.4s ease;
+    }
+
+    #dice.animate {
+      transform: rotate(720deg);
+    }
+
+    .color-picker {
+      margin: 10px 0;
+    }
+
+    /* Token Animations */
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(5deg); }
+      75% { transform: rotate(-5deg); }
+    }
+
+    .token.bounce { animation: bounce 0.5s ease; }
+    .token.pulse { animation: pulse 0.5s ease; }
+    .token.wiggle { animation: wiggle 0.5s ease; }
+
+    /* Cursor Colors */
+    body.red-cursor {
+      cursor: url('data:image/svg+xml;utf8,<svg height="32" width="32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="10" fill="red"/></svg>') 16 16, auto;
+    }
+
+    body.blue-cursor {
+      cursor: url('data:image/svg+xml;utf8,<svg height="32" width="32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="10" fill="blue"/></svg>') 16 16, auto;
+    }
+
+    body.green-cursor {
+      cursor: url('data:image/svg+xml;utf8,<svg height="32" width="32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="10" fill="green"/></svg>') 16 16, auto;
+    }
+
+    body.yellow-cursor {
+      cursor: url('data:image/svg+xml;utf8,<svg height="32" width="32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="10" fill="gold"/></svg>') 16 16, auto;
+    }
+
+    #currentPlayer {
+      font-weight: bold;
+      font-size: 1.2em;
+      transition: color 0.3s, text-shadow 0.3s;
+    }
+
+    .glow-red { color: red; text-shadow: 0 0 5px red; }
+    .glow-blue { color: blue; text-shadow: 0 0 5px blue; }
+    .glow-green { color: green; text-shadow: 0 0 5px green; }
+    .glow-yellow { color: goldenrod; text-shadow: 0 0 5px gold; }
+  </style>
+</head>
+<body>
+  <h1>Race to the Top 🏁</h1>
+
+  <div id="setup">
+    <label for="playerCount">Number of Players:</label>
+    <select id="playerCount">
+      <option value="2">2 Players</option>
+      <option value="3">3 Players</option>
+      <option value="4">4 Players</option>
+    </select>
+    <div id="playerColors"></div>
+    <button id="startBtn">Start Game</button>
+  </div>
+
+  <div id="game" class="hidden">
+    <div id="controls">
+      <p>Current Turn: <span id="currentPlayer">Player 1</span></p>
+      <div id="dice">🎲</div>
+      <button id="rollBtn">Roll Dice</button>
+      <p id="diceResult"></p>
+      <p id="winner" class="hidden"></p>
+      <button id="restartBtn" class="hidden">Play Again 🔁</button>
+    </div>
+    <div id="board"></div>
+  </div>
+
+  <script>
+    const numTiles = 12;
+    const allColors = ['🔴', '🔵', '🟢', '🟡'];
+
+    let numPlayers = 2;
+    let playerPositions = [];
+    let playerColors = [];
+    let currentPlayer = 0;
+    let targetTileIndex = -1;
+
+    const setup = document.getElementById('setup');
+    const startBtn = document.getElementById('startBtn');
+    const playerCountSelect = document.getElementById('playerCount');
+    const playerColorsContainer = document.getElementById('playerColors');
+    const gameArea = document.getElementById('game');
+    const board = document.getElementById('board');
+    const rollBtn = document.getElementById('rollBtn');
+    const diceResult = document.getElementById('diceResult');
+    const currentPlayerDisplay = document.getElementById('currentPlayer');
+    const winnerDisplay = document.getElementById('winner');
+    const restartBtn = document.getElementById('restartBtn');
+    const dice = document.getElementById('dice');
+
+    playerCountSelect.addEventListener('change', renderColorPickers);
+    startBtn.addEventListener('click', startGame);
+    rollBtn.addEventListener('click', rollDice);
+    restartBtn.addEventListener('click', restartGame);
+
+    renderColorPickers();
+
+    function renderColorPickers() {
+      numPlayers = parseInt(playerCountSelect.value);
+      playerColorsContainer.innerHTML = '';
+
+      for (let i = 0; i < numPlayers; i++) {
+        const div = document.createElement('div');
+        div.className = 'color-picker';
+        div.innerHTML = `
+          <label>Player ${i + 1} Color:</label>
+          <select id="color-${i}">
+            ${allColors.map(c => `<option value="${c}">${c}</option>`).join('')}
+          </select>
+        `;
+        playerColorsContainer.appendChild(div);
+      }
+    }
+
+    function startGame() {
+      playerColors = [];
+      const chosenColors = new Set();
+      for (let i = 0; i < numPlayers; i++) {
+        const color = document.getElementById(`color-${i}`).value;
+        if (chosenColors.has(color)) {
+          alert("Each player must choose a unique color!");
+          return;
+        }
+        chosenColors.add(color);
+        playerColors.push(color);
+      }
+
+      playerPositions = Array(numPlayers).fill(0);
+      currentPlayer = 0;
+      setup.classList.add('hidden');
+      gameArea.classList.remove('hidden');
+      winnerDisplay.className = 'hidden';
+      restartBtn.classList.add('hidden');
+      diceResult.textContent = '';
+      rollBtn.disabled = false;
+
+      createBoard();
+      updateBoard();
+      updateCursorColor();
+    }
+
+    function createBoard() {
+      board.innerHTML = '';
+      for (let row = 0; row < numPlayers; row++) {
+        const track = document.createElement('div');
+        track.className = 'track';
+        for (let col = 0; col < numTiles; col++) {
+          const tile = document.createElement('div');
+          tile.className = 'tile';
+          tile.id = `tile-${row}-${col}`;
+          tile.textContent = col + 1;
+          track.appendChild(tile);
+        }
+        board.appendChild(track);
+      }
+    }
+
+    function updateBoard(withAnimation = false) {
+      document.querySelectorAll('.token').forEach(el => el.remove());
+
+      playerPositions.forEach((pos, index) => {
+        if (pos < numTiles) {
+          const tile = document.getElementById(`tile-${index}-${pos}`);
+          const token = document.createElement('div');
+          token.classList.add('token');
+          if (withAnimation && index === currentPlayer) {
+            const anims = ['bounce', 'pulse', 'wiggle'];
+            token.classList.add(anims[Math.floor(Math.random() * anims.length)]);
+          }
+          token.textContent = playerColors[index];
+          tile.appendChild(token);
+        }
+      });
+    }
+
+    function rollDice() {
+      dice.classList.add('animate');
+      rollBtn.disabled = true;
+
+      setTimeout(() => {
+        dice.classList.remove('animate');
+        const roll = Math.floor(Math.random() * 6) + 1;
+        dice.textContent = ['⚀','⚁','⚂','⚃','⚄','⚅'][roll - 1];
+        diceResult.textContent = `Player ${currentPlayer + 1} rolled a ${roll}`;
+
+        targetTileIndex = Math.min(playerPositions[currentPlayer] + roll, numTiles - 1);
+        highlightTargetTile(currentPlayer, targetTileIndex);
+      }, 600);
+    }
+
+    function highlightTargetTile(row, col) {
+      const tile = document.getElementById(`tile-${row}-${col}`);
+      tile.classList.add('highlight');
+      tile.addEventListener('click', moveToken, { once: true });
+    }
+
+    function moveToken() {
+      const tile = document.getElementById(`tile-${currentPlayer}-${targetTileIndex}`);
+      tile.classList.remove('highlight');
+      tile.removeEventListener('click', moveToken);
+
+      playerPositions[currentPlayer] = targetTileIndex;
+      updateBoard(true);
+
+      if (playerPositions[currentPlayer] >= numTiles - 1) {
+        const winnerColor = playerColors[currentPlayer];
+        winnerDisplay.textContent = `🎉 Player ${currentPlayer + 1} wins!`;
+        winnerDisplay.className = `glow-${getColorClass(winnerColor)}`;
+        winnerDisplay.classList.remove('hidden');
+        rollBtn.disabled = true;
+        restartBtn.classList.remove('hidden');
+        document.body.className = '';
+        return;
+      }
+
+      currentPlayer = (currentPlayer + 1) % numPlayers;
+      currentPlayerDisplay.textContent = `Player ${currentPlayer + 1}`;
+      rollBtn.disabled = false;
+      updateCursorColor();
+    }
+
+    function getColorClass(emoji) {
+      return {
+        '🔴': 'red',
+        '🔵': 'blue',
+        '🟢': 'green',
+        '🟡': 'yellow'
+      }[emoji];
+    }
+
+    function restartGame() {
+      gameArea.classList.add('hidden');
+      setup.classList.remove('hidden');
+      renderColorPickers();
+      document.body.className = '';
+    }
+
+    function updateCursorColor() {
+      document.body.className = '';
+      currentPlayerDisplay.className = '';
+      const emoji = playerColors[currentPlayer];
+      const colorMap = {
+        '🔴': 'red-cursor',
+        '🔵': 'blue-cursor',
+        '🟢': 'green-cursor',
+        '🟡': 'yellow-cursor'
+      };
+      const glowMap = {
+        '🔴': 'glow-red',
+        '🔵': 'glow-blue',
+        '🟢': 'glow-green',
+        '🟡': 'glow-yellow'
+      };
+
+      document.body.classList.add(colorMap[emoji]);
+      currentPlayerDisplay.classList.add(glowMap[emoji]);
+    }
+  </script>
+</body>
+</html>
